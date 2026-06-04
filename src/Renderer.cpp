@@ -45,44 +45,45 @@ in vec4 fragColour;
 in vec3 fragNormal;
 
 out vec4 outColour;
-
+uniform vec3 uLightPos;   // world position of light
+uniform vec3 uCamPos;     // camera position for specular
 uniform vec3 uLightDir;
 
+
 void main() {
-    // 1. Calculate the core lighting angle
     vec3 normal = normalize(fragNormal);
-    vec3 lightDir = normalize(uLightDir);
-    float NdotL = dot(normal, lightDir);
     
-    // 2. CEL SHADING: Quantize the light into 3 hard, flat bands
+    // vector from fragment to light
+    vec3 lightDir = normalize(uLightPos - fragColour.rgb); // use world pos
+    
+    // diffuse
+    float diff = max(dot(normal, lightDir), 0.0);
+    
+    // cel shade the diffuse
     float celLight;
-    if (NdotL > 0.5) {
-        celLight = 1.0;     // Highlight zone (Fully lit)
-    } else if (NdotL > 0.0) {
-        celLight = 0.6;     // Midtone zone
-    } else {
-        celLight = 0.3;     // Shadow zone (Flat dark ambient)
-    }
-
-    // 3. FOAM CREST DETECTION
-    // Check if this surface fragment is tilting sharply upward or at a peak wave height.
-    // If it is pointing almost straight up relative to a flat plane, or meets our foam criteria, 
-    // we paint it solid white to create the "drawn foam" outlines seen in BotW.
-    vec3 pureTealWater = fragColour.rgb * celLight;
-    vec3 foamWhite = vec3(1.0, 1.0, 1.0);
+    if (diff > 0.8)      celLight = 1.0;
+    else if (diff > 0.5) celLight = 0.6;
+    else if (diff > 0.2) celLight = 0.3;
+    else                 celLight = 0.1;
     
-    vec3 finalColour;
-    // If the surface normal is sharply angled (cresting wave tip), generate crisp foam outlines
-    if (normal.y < 0.75 && normal.y > 0.5) {
-        finalColour = foamWhite;
-    } else {
-        finalColour = pureTealWater;
-    }
-
-    // Output with the alpha transparency you built earlier
+    // specular — gives water that shiny glint
+    vec3 viewDir   = normalize(uCamPos - fragColour.rgb);
+    vec3 reflDir   = reflect(-lightDir, normal);
+    float spec     = pow(max(dot(viewDir, reflDir), 0.0), 32.0);
+    float celSpec  = spec > 0.6 ? 1.0 : 0.0; // hard specular highlight
+    
+    vec3 ambient  = fragColour.rgb * 0.15;
+    vec3 diffuse  = fragColour.rgb * celLight;
+    vec3 specular = vec3(1.0, 1.0, 1.0) * celSpec * 0.8; // white glint
+    
+    vec3 finalColour = ambient + diffuse + specular;
+    
+    // foam
+    if (normal.y < 0.60 && normal.y > 0.5 && celLight > 0.4)
+        finalColour = vec3(1.0, 1.0, 1.0);
+    
     outColour = vec4(finalColour, fragColour.a);
-}
-)"; /*Renderer::Renderer(int w, int h) {
+})"; /*Renderer::Renderer(int w, int h) {
    // Initialise the "video"
    SDL_Init(SDL_INIT_VIDEO);
    // Set version : ) ) ) ) ) ) ) )
@@ -301,7 +302,7 @@ void Renderer::draw(const Grid& grid) {
 
         if (isTopLayer) {
           // always render surface — base water colour, brighten with waves
-          float intensity = std::min(std::abs(val) * 3.5f, 1.0f);
+          float intensity = std::min(std::abs(val) * 7.5f, 1.0f);
           float g = 0.15f + intensity * 0.70f;
           float b = 0.45f + intensity * 0.50f;
           float a = 0.75f * edgeFade;
@@ -348,10 +349,13 @@ void Renderer::draw(const Grid& grid) {
       glm::vec3(grid.width / 2, grid.height / 2, grid.length / 2),
       glm::vec3(0, 1, 0));
   glm::mat4 mvp = proj * view;
+  glm::vec3 camPos(grid.width * 1.3f, grid.height * 1.5f, grid.length * 1.9f);
   glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uMVP"), 1, GL_FALSE,
                      glm::value_ptr(mvp));
-  glUniform3f(glGetUniformLocation(shaderProgram, "uLightDir"), 1.0f, 2.0f,
-              1.0f);
+  glUniform3f(glGetUniformLocation(shaderProgram, "uLightPos"),
+              grid.width * 0.5f, grid.height * 3.0f, grid.length * 0.2f);
+  glUniform3f(glGetUniformLocation(shaderProgram, "uCamPos"), camPos.x,
+              camPos.y, camPos.z);
 
   glDrawArraysInstanced(GL_TRIANGLES, 0, 36, instances.size());
   glBindVertexArray(0);
