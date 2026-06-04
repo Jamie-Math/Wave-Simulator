@@ -4,12 +4,12 @@
 
 #include <vector>
 
-#include "include/Simulator.hpp"
+#include "Simulator.hpp"
 
 // one entry per visible cell passed to the GPU
 struct CellInstance {
   float x, y, z;
-  float r, g, b;
+  float r, g, b, a;
 };
 
 class Renderer {
@@ -27,9 +27,9 @@ class Renderer {
   SDL_Window* window;
   SDL_GLContext glContext;
 
-  GLuint shaderProgram;
   GLuint cubeVAO, cubeVBO;  // unit cube mesh (shared)
   GLuint instanceVBO;       // per-cell position + colour data
+  GLuint shaderProgram;
 
   // compile and link the vertex + fragment shaders
   // TODO: implement this — see shader source strings below

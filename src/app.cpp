@@ -1,6 +1,6 @@
-#include <SDL2/SDL.h>
+#include "app.hpp"
 
-#include "App.h"
+#include <SDL2/SDL.h>
 
 App::App()
     : grid(30, 30, 30),                           // small grid — good for MVP
@@ -17,14 +17,27 @@ App::App()
 }
 
 void App::run() {
-  // TODO: while running:
-  //   handleEvents()
-  //   simulator.step()
-  //   renderer.draw(grid)
-  //   renderer.present()
-  //   SDL_Delay(16)  -- rough 60fps cap, replace with proper timing later
-}
+  float time = 0.0f;
+  while (running) {
+    /* code */
+    // ===> ADD THIS LINE TO DRIVER THE WATER CONTINUOUSLY <===
+    // This constantly forces a specific coordinate to bob up and down like a
+    // motor
+    handleEvents();
+    float waveSourceValue = std::sin(time * 2.0f) * 3.0f;
+    grid.addImpulse(15, 15, 2, waveSourceValue);
 
+    simulator.step();
+    renderer.draw(grid);
+    renderer.present();
+
+    time += 0.1f;  // Advance time for the sine wave
+    SDL_Delay(33);
+  }
+  //-- rough 60fps cap,
+  // replace with proper timing later
+}
+#include <iostream>
 void App::handleEvents() {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {

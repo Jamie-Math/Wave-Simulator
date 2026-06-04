@@ -1,6 +1,9 @@
-#include "include/Renderer.hpp"
+#include "Renderer.hpp"
 
 #include <cmath>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
 // -------------------------------------------------------
@@ -11,120 +14,228 @@
 // vertex shader: runs once per vertex
 // gl_Position is where on screen this vertex lands
 // it receives the cell's world position and colour as instance data
-const char* vertSrc = R"(
-#version 330 core
-
-layout(location = 0) in vec3 aPos;       // vertex of the unit cube
-layout(location = 1) in vec3 iPos;       // instance: cell world position
-layout(location = 2) in vec3 iColour;    // instance: cell colour
-
-out vec3 fragColour;
-out vec3 fragNormal; // we'll fake a normal from vertex position for cell shading
-
-uniform mat4 uMVP; // model-view-projection matrix — set from CPU each frame
-
-void main() {
-    // place the unit cube at the cell's world position
-    vec3 worldPos = aPos + iPos;
-    gl_Position = uMVP * vec4(worldPos, 1.0);
-
-    fragColour = iColour;
-    // fake normal: use the vertex position on the cube to approximate face normal
-    // good enough for cell shading without a full normal buffer
-    fragNormal = normalize(aPos);
-}
-)";
 
 // fragment shader: runs once per pixel
 // cell shading = quantise the lighting into discrete bands (e.g. 3 levels)
 // this gives the hard-edged cartoon look
+const char* vertSrc = R"(
+#version 330 core
+
+layout(location = 0) in vec3 aPos;       
+layout(location = 1) in vec3 iPos;       
+layout(location = 2) in vec4 iColour;    // Changed to vec4 for RGBA
+
+out vec4 fragColour;                     // Changed to vec4
+out vec3 fragNormal; 
+
+uniform mat4 uMVP; 
+
+void main() {
+    vec3 worldPos = aPos + iPos;
+    gl_Position = uMVP * vec4(worldPos, 1.0);
+
+    fragColour = iColour; 
+    fragNormal = normalize(aPos);
+}
+)";
 const char* fragSrc = R"(
 #version 330 core
 
-in vec3 fragColour;
+in vec4 fragColour;
 in vec3 fragNormal;
 
 out vec4 outColour;
 
-uniform vec3 uLightDir; // direction light is coming from — set from CPU
+uniform vec3 uLightDir;
 
 void main() {
-    // diffuse lighting: how much does this face point toward the light
-    float diff = max(dot(normalize(fragNormal), normalize(uLightDir)), 0.0);
+    // 1. Calculate the core lighting angle
+    vec3 normal = normalize(fragNormal);
+    vec3 lightDir = normalize(uLightDir);
+    float NdotL = dot(normal, lightDir);
+    
+    // 2. CEL SHADING: Quantize the light into 3 hard, flat bands
+    float celLight;
+    if (NdotL > 0.5) {
+        celLight = 1.0;     // Highlight zone (Fully lit)
+    } else if (NdotL > 0.0) {
+        celLight = 0.6;     // Midtone zone
+    } else {
+        celLight = 0.3;     // Shadow zone (Flat dark ambient)
+    }
 
-    // TODO: quantise diff into cel shading bands
-    // example three-band quantisation:
-    //   if (diff > 0.8) diff = 1.0;
-    //   else if (diff > 0.4) diff = 0.6;
-    //   else diff = 0.2;
-    // this is what creates the hard cartoon shading steps
+    // 3. FOAM CREST DETECTION
+    // Check if this surface fragment is tilting sharply upward or at a peak wave height.
+    // If it is pointing almost straight up relative to a flat plane, or meets our foam criteria, 
+    // we paint it solid white to create the "drawn foam" outlines seen in BotW.
+    vec3 pureTealWater = fragColour.rgb * celLight;
+    vec3 foamWhite = vec3(1.0, 1.0, 1.0);
+    
+    vec3 finalColour;
+    // If the surface normal is sharply angled (cresting wave tip), generate crisp foam outlines
+    if (normal.y < 0.75 && normal.y > 0.5) {
+        finalColour = foamWhite;
+    } else {
+        finalColour = pureTealWater;
+    }
 
-    // apply lighting to colour
-    vec3 lit = fragColour * diff;
-    outColour = vec4(lit, 1.0);
+    // Output with the alpha transparency you built earlier
+    outColour = vec4(finalColour, fragColour.a);
 }
-)";
+)"; /*Renderer::Renderer(int w, int h) {
+   // Initialise the "video"
+   SDL_Init(SDL_INIT_VIDEO);
+   // Set version : ) ) ) ) ) ) ) )
+   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+   // hat does profile mask do?
+   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
+ SDL_GL_CONTEXT_PROFILE_CORE);
+   // Create visualisation.
+   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+   window = SDL_CreateWindow("Wave Simulator", SDL_WINDOWPOS_CENTERED,
+                             SDL_WINDOWPOS_CENTERED, w, h,
+                             SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+   glContext = SDL_GL_CreateContext(window);
+   glewExperimental = GL_TRUE;
+   glewInit();
+   glEnable(GL_DEPTH_TEST);
+   glViewport(0, 0, w, h);
+   shaderProgram = compileShaders();
+   setupCubeMesh();
+   glGenBuffers(1, &instanceVBO);
 
+   // To this:
+ }
+ */
+// ERROR CHECk
 Renderer::Renderer(int w, int h) {
-  // Initialise the "video"
-  SDL_Init(SDL_INIT_VIDEO);
-  // Set version : ) ) ) ) ) ) ) )
+  // 1. Initialize SDL Video and check for failure
+  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    std::cerr << "SDL Init Failed: " << SDL_GetError() << std::endl;
+    return;
+  }
+
+  // 2. Set modern OpenGL attributes
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-  // hat does profile mask do?
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_MASK);
-  // Create visualisation.
-  SDL_GL_CreateContext(window);
-  glewInit();
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+  // 3. Create the window frame
+  window = SDL_CreateWindow("Wave Simulator", SDL_WINDOWPOS_CENTERED,
+                            SDL_WINDOWPOS_CENTERED, w, h,
+                            SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+
+  // ===> DIAGNOSTIC CHANGE: Catch the error before it can segfault!
+  if (!window) {
+    std::cerr << "\n=============================================" << std::endl;
+    std::cerr << "CRITICAL ERROR: SDL could not create a window!" << std::endl;
+    std::cerr << "Reason: " << SDL_GetError() << std::endl;
+    std::cerr << "=============================================\n" << std::endl;
+    return;  // Exit safely instead of trying to make a context on a null window
+  }
+
+  // 4. Create the context safely
+  glContext = SDL_GL_CreateContext(window);
+  if (!glContext) {
+    std::cerr << "GL Context Creation Failed: " << SDL_GetError() << std::endl;
+    return;
+  }
+
+  // 5. Fire up GLEW
+  glewExperimental = GL_TRUE;
+  GLenum err = glewInit();
+  if (err != GLEW_OK) {
+    std::cerr << "GLEW Init Failed: " << glewGetErrorString(err) << std::endl;
+    return;
+  }
+
   glEnable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glViewport(0, 0, w, h);
-
-  // TODO: SDL_CreateWindow with SDL_WINDOW_OPENGL flag
-  // TODO: SDL_GL_CreateContext(window)
-  // TODO: glewInit()
-  // TODO: glEnable(GL_DEPTH_TEST) — needed for correct 3D rendering
-  // TODO: glViewport(0, 0, w, h)
-
   shaderProgram = compileShaders();
   setupCubeMesh();
-
-  // create the instance VBO — we'll resize it each frame
-  // TODO: glGenBuffers(1, &instanceVBO)
   glGenBuffers(1, &instanceVBO);
 }
 
 Renderer::~Renderer() {
-  
-  // TODO: glDeleteBuffers, glDeleteVertexArrays
-  // TODO: SDL_GL_DeleteContext, SDL_DestroyWindow, SDL_Quit
-}
+  glDeleteBuffers(1, &instanceVBO);
+  glDeleteVertexArrays(1, &cubeVAO);
+  glDeleteProgram(shaderProgram);
 
+  // 2. Clean up SDL (in reverse order of creation)
+  SDL_GL_DeleteContext(
+      glContext);  // Assuming you name your context variable this
+  SDL_DestroyWindow(window);
+  SDL_Quit();
+}
 GLuint Renderer::compileShaders() {
-  // TODO: standard OpenGL shader compile steps:
-  // 1. glCreateShader(GL_VERTEX_SHADER), glShaderSource, glCompileShader
-  // 2. same for GL_FRAGMENT_SHADER
-  // 3. glCreateProgram, glAttachShader x2, glLinkProgram
-  // 4. check for errors with glGetShaderiv(shader, GL_COMPILE_STATUS, ...)
-  //    print glGetShaderInfoLog if it failed
-  // 5. glDeleteShader both after linking
-  // return the program handle
-  return 0;
+  // Create identities for shaders.
+  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+  GLuint faceShader = glCreateShader(GL_FRAGMENT_SHADER);
+  // Assign the shaders using their identity and defintion
+  glShaderSource(vertexShader, 1, &vertSrc, NULL);
+  glShaderSource(faceShader, 1, &fragSrc, NULL);
+
+  // Compile
+  glCompileShader(vertexShader);
+  glCompileShader(faceShader);
+
+  // Start the rendering.
+
+  GLuint engine = glCreateProgram();
+
+  glAttachShader(engine, vertexShader);
+  glAttachShader(engine, faceShader);
+
+  glLinkProgram(engine);
+
+  // Once all the definitions are made delete the shaders.
+  glDeleteShader(vertexShader);
+  glDeleteShader(faceShader);
+  // Returns the GPU ticket for the engine.
+  return engine;
 }
 
 void Renderer::setupCubeMesh() {
-  // TODO: define 36 vertices for a unit cube (side 0.9 to leave small gaps
-  // between cells) each vertex is a vec3. 12 triangles * 3 vertices = 36 you
-  // can find a standard cube vertex list by searching "OpenGL unit cube
-  // vertices" or generate it — 6 faces, 2 triangles each, 3 vertices each
-  //
-  // then:
-  // glGenVertexArrays(1, &cubeVAO)
-  // glBindVertexArray(cubeVAO)
-  // glGenBuffers(1, &cubeVBO)
-  // glBindBuffer(GL_ARRAY_BUFFER, cubeVBO)
-  // glBufferData with the vertex data
-  // glVertexAttribPointer(0, 3, GL_FLOAT, ...) — location 0 = vertex pos
-  // glEnableVertexAttribArray(0)
+  // Define the 36 vertices. (3 per triangle 2 triangles per face, and 6 faces
+  // yayayaya)
+  float vertices[] = {
+      // Back face
+      -0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f, 0.45f, -0.45f,
+      0.45f, 0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, -0.45f, -0.45f,
+
+      // Front face
+      -0.45f, -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, 0.45f, 0.45f, 0.45f, 0.45f,
+      0.45f, 0.45f, -0.45f, 0.45f, 0.45f, -0.45f, -0.45f, 0.45f,
+
+      // Left face
+      -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, -0.45f, -0.45f, -0.45f, -0.45f,
+      -0.45f, -0.45f, -0.45f, -0.45f, -0.45f, 0.45f, -0.45f, 0.45f, 0.45f,
+
+      // Right face
+      0.45f, 0.45f, 0.45f, 0.45f, 0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f,
+      -0.45f, -0.45f, 0.45f, -0.45f, 0.45f, 0.45f, 0.45f, 0.45f,
+
+      // Bottom face
+      -0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f, -0.45f, 0.45f,
+      0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, -0.45f,
+
+      // Top face
+      -0.45f, 0.45f, -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, 0.45f, 0.45f, 0.45f,
+      0.45f, 0.45f, -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, -0.45f};
+  glGenVertexArrays(1, &cubeVAO);
+  glBindVertexArray(cubeVAO);
+
+  glGenBuffers(1, &cubeVBO);
+  glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+  glBindVertexArray(0);
 }
 
 void Renderer::amplitudeToColour(float v, float& r, float& g, float& b) {
@@ -147,8 +258,8 @@ void Renderer::amplitudeToColour(float v, float& r, float& g, float& b) {
 
 void Renderer::draw(const Grid& grid) {
   // clear screen
-  // TODO: glClearColor(0.05f, 0.05f, 0.05f, 1.0f) — dark background
-  // TODO: glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   // build instance list — one entry per visible cell
   std::vector<CellInstance> instances;
@@ -160,8 +271,11 @@ void Renderer::draw(const Grid& grid) {
         int i = grid.index(x, y, z);
 
         // solid cells: render as grey obstacle
+        // solid cells: render as grey obstacle
         if (grid.solid[i]) {
-          instances.push_back({(float)x, (float)y, (float)z, 0.4f, 0.4f, 0.4f});
+          // Explicitly add 1.0f for solid walls so they aren't transparent
+          instances.push_back(
+              {(float)x, (float)y, (float)z, 0.4f, 0.4f, 0.4f, 1.0f});
           continue;
         }
 
@@ -170,57 +284,64 @@ void Renderer::draw(const Grid& grid) {
         // skip near-zero cells — they're invisible and waste draw calls
         if (std::abs(val) < threshold) continue;
 
-        float r, g, b;
-        amplitudeToColour(val, r, g, b);
-        instances.push_back({(float)x, (float)y, (float)z, r, g, b});
+        // Take absolute value and boost it so waves glow up brightly
+        float intensity = std::abs(val) * 3.5f;
+        if (intensity > 1.0f) intensity = 1.0f;  // Keep it within bounds
+
+        float r = 0.0f;
+        float g =
+            0.05f + (intensity * 0.85f);  // Deep teal to glowing green-blue
+        float b =
+            0.30f + (intensity * 0.70f);  // Dark marine to bright neon cyan
+        float a = 0.10f;                  // 40% solid transparency!
+
+        instances.push_back({(float)x, (float)y, (float)z, r, g, b, a});
       }
 
   if (instances.empty()) return;
-
-  // upload instance data to GPU
-  // TODO: glBindBuffer(GL_ARRAY_BUFFER, instanceVBO)
-  // TODO: glBufferData(GL_ARRAY_BUFFER, instances.size()*sizeof(CellInstance),
-  //                    instances.data(), GL_DYNAMIC_DRAW)
+  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+  glBufferData(GL_ARRAY_BUFFER, instances.size() * sizeof(CellInstance),
+               instances.data(), GL_DYNAMIC_DRAW);
+  // Binds the shapes.
+  glBindVertexArray(cubeVAO);
 
   // set up instance attribute pointers on the VAO
-  // TODO: glBindVertexArray(cubeVAO)
+  // TODO:
+  glBindVertexArray(cubeVAO);
   // location 1 = iPos (x,y,z), offset 0 in CellInstance
-  // TODO: glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
-  // (void*)0)
-  // TODO: glEnableVertexAttribArray(1)
-  // TODO: glVertexAttribDivisor(1, 1)  — advance once per instance, not per
-  // vertex location 2 = iColour (r,g,b), offset 12 bytes in CellInstance
-  // TODO: glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
-  // (void*)12)
-  // TODO: glEnableVertexAttribArray(2)
-  // TODO: glVertexAttribDivisor(2, 1)
+  // TODO:
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
+                        (void*)0);
+  // TODO:
+  glEnableVertexAttribArray(1);
+  // TODO:
+  glVertexAttribDivisor(1, 1);
+  // TODO:
+  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
+                        (void*)12);
+  glEnableVertexAttribArray(2);
+  glVertexAttribDivisor(2, 1);
 
   // set shader uniforms
-  // TODO: glUseProgram(shaderProgram)
+  glUseProgram(shaderProgram);
+
+  glm::mat4 proj =
+      glm::perspective(glm::radians(60.0f),
+                       (float)grid.height / ((float)grid.length), 0.1f, 500.0f);
+  glm::mat4 view = glm::lookAt(
+      glm::vec3(grid.width / 2, grid.height * 1.5f, grid.length * 2),
+      glm::vec3(grid.width / 2, grid.height / 2, grid.length / 2),
+      glm::vec3(0, 1, 0));
+  glm::mat4 mvp = proj * view;
+  GLint mvpLoc = glGetUniformLocation(shaderProgram, "uMVP");
+  glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
   //
-  // MVP matrix — for now a simple perspective + view + identity model
-  // you need a maths library for this — glm is the standard choice
-  // add to your build: #include <glm/glm.hpp> and
-  // <glm/gtc/matrix_transform.hpp>
-  //
-  // glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspectRatio, 0.1f,
-  // 500.0f); glm::mat4 view = glm::lookAt(
-  //     glm::vec3(w/2, h*1.5f, d*2),  // camera position — above and behind the
-  //     grid glm::vec3(w/2, h/2,    d/2),  // look at centre of grid
-  //     glm::vec3(0, 1, 0)            // up vector
-  // );
-  // glm::mat4 mvp = proj * view;
-  // GLint mvpLoc = glGetUniformLocation(shaderProgram, "uMVP");
-  // glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
-  //
-  // light direction uniform:
-  // GLint lightLoc = glGetUniformLocation(shaderProgram, "uLightDir");
-  // glUniform3f(lightLoc, 1.0f, 2.0f, 1.0f); // light from upper right
+
+  GLint lightLoc = glGetUniformLocation(shaderProgram, "uLightDir");
+  glUniform3f(lightLoc, 1.0f, 2.0f, 1.0f);  // light from upper right
 
   // draw all instances in one call
-  // TODO: glDrawArraysInstanced(GL_TRIANGLES, 0, 36, instances.size())
+  glDrawArraysInstanced(GL_TRIANGLES, 0, 36, instances.size());
 }
 
-void Renderer::present() {
-  // TODO: SDL_GL_SwapWindow(window)
-}
+void Renderer::present() { SDL_GL_SwapWindow(window); }

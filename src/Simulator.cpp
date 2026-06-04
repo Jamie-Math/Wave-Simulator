@@ -1,9 +1,9 @@
-#include "include/Simulator.hpp"
+#include "Simulator.hpp"
 
 #include <iostream>
 
 Simulator::Simulator(Grid& g, float c, float dt, float dx, float damping)
-    : grid(g), damping(damping), k(c * dt / dx) * (c * dt / dx) {
+    : grid(g), damping(damping), k((c * dt / dx) * (c * dt / dx)) {
   // CFL check — if k > 1/3 the sim will explode
   // 1/3 comes from 1/sqrt(3) squared for 3D stability
   if (k > 1.0f / 3.0f) {

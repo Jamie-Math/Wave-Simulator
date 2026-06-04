@@ -1,5 +1,5 @@
 #pragma once
-#include "include/Grid.hpp"
+#include "Grid.hpp"
 
 class Simulator {
  public:

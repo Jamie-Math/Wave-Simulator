@@ -1,4 +1,4 @@
-#include "include/Grid.hpp"
+#include "Grid.hpp"
 
 Grid::Grid(int w, int h, int l) : width(w), height(h), length(l) {
   {
