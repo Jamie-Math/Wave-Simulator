@@ -4,12 +4,12 @@
 
 #include <vector>
 
-#include "Grid.h"
+#include "include/Simulator.hpp"
 
 // one entry per visible cell passed to the GPU
 struct CellInstance {
-  float x, y, z;  // world position of this cell
-  float r, g, b;  // colour based on amplitude
+  float x, y, z;
+  float r, g, b;
 };
 
 class Renderer {
@@ -50,4 +50,4 @@ class Renderer {
   // threshold below which cells are invisible — keeps the scene readable
   // start with 0.05f and tune visually
   float threshold = 0.05f;
-};  
+};

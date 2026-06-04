@@ -1,4 +1,4 @@
-#include "Renderer.h"
+#include "include/Renderer.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -66,12 +66,19 @@ void main() {
 )";
 
 Renderer::Renderer(int w, int h) {
-  // TODO: SDL_Init(SDL_INIT_VIDEO)
-  // TODO: SDL_GL_SetAttribute for OpenGL 3.3 core profile
-  //   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  //   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-  //   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
-  //   SDL_GL_CONTEXT_PROFILE_CORE);
+  // Initialise the "video"
+  SDL_Init(SDL_INIT_VIDEO);
+  // Set version : ) ) ) ) ) ) ) )
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  // hat does profile mask do?
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_MASK);
+  // Create visualisation.
+  SDL_GL_CreateContext(window);
+  glewInit();
+  glEnable(GL_DEPTH_TEST);
+  glViewport(0, 0, w, h);
+
   // TODO: SDL_CreateWindow with SDL_WINDOW_OPENGL flag
   // TODO: SDL_GL_CreateContext(window)
   // TODO: glewInit()
@@ -83,9 +90,11 @@ Renderer::Renderer(int w, int h) {
 
   // create the instance VBO — we'll resize it each frame
   // TODO: glGenBuffers(1, &instanceVBO)
+  glGenBuffers(1, &instanceVBO);
 }
 
 Renderer::~Renderer() {
+  
   // TODO: glDeleteBuffers, glDeleteVertexArrays
   // TODO: SDL_GL_DeleteContext, SDL_DestroyWindow, SDL_Quit
 }
@@ -143,9 +152,9 @@ void Renderer::draw(const Grid& grid) {
 
   // build instance list — one entry per visible cell
   std::vector<CellInstance> instances;
-  instances.reserve(grid.width * grid.height * grid.depth / 4);
+  instances.reserve(grid.width * grid.height * grid.length / 4);
 
-  for (int z = 0; z < grid.depth; z++)
+  for (int z = 0; z < grid.length; z++)
     for (int y = 0; y < grid.height; y++)
       for (int x = 0; x < grid.width; x++) {
         int i = grid.index(x, y, z);
