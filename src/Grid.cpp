@@ -2,9 +2,9 @@
 
 Grid::Grid(int w, int h, int l) : width(w), height(h), length(l) {
   {
-    solid = std::vector<bool>(w * l * h);
-    previous = std::vector<float>(w * l * h);
-    current = std::vector<float>(w * l * h);
+    solid = std::vector<bool>(w * l * h, 0);
+    previous = std::vector<float>(w * l * h, 0);
+    current = std::vector<float>(w * l * h, 0);
   }
 }
 

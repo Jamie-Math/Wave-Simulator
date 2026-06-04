@@ -16,6 +16,7 @@ class Renderer {
  public:
   Renderer(int windowW, int windowH);
   ~Renderer();
+  std::vector<bool> nearActivity;
 
   // build instance list from grid and draw all cells
   void draw(const Grid& grid);
@@ -24,6 +25,9 @@ class Renderer {
   void present();
 
  private:
+  bool hasActivityNearby(const Grid& grid, int cx, int cy, int cz, int radius);
+  GLuint heightTexture = 0;
+  bool textureInitialized = false;
   SDL_Window* window;
   SDL_GLContext glContext;
 

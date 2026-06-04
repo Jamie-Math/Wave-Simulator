@@ -158,6 +158,10 @@ Renderer::Renderer(int w, int h) {
   shaderProgram = compileShaders();
   setupCubeMesh();
   glGenBuffers(1, &instanceVBO);
+  int maxInstances = 50 * 50 * 50;
+  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+  glBufferData(GL_ARRAY_BUFFER, maxInstances * sizeof(CellInstance), nullptr,
+               GL_DYNAMIC_DRAW);
 }
 
 Renderer::~Renderer() {
@@ -204,28 +208,32 @@ void Renderer::setupCubeMesh() {
   // yayayaya)
   float vertices[] = {
       // Back face
-      -0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f, 0.45f, -0.45f,
-      0.45f, 0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, -0.45f, -0.45f,
+      -0.485f, -0.485f, -0.485f, 0.485f, -0.485f, -0.485f, 0.485f, 0.485f,
+      -0.485f, 0.485f, 0.485f, -0.485f, -0.485f, 0.485f, -0.485f, -0.485f,
+      -0.485f, -0.485f,
 
       // Front face
-      -0.45f, -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, 0.45f, 0.45f, 0.45f, 0.45f,
-      0.45f, 0.45f, -0.45f, 0.45f, 0.45f, -0.45f, -0.45f, 0.45f,
+      -0.485f, -0.485f, 0., 0.485f, -0.485f, 0.485f, 0.485f, 0.485f, 0.485f,
+      0.485f, 0.485f, 0.485f, -0.485f, 0.485f, 0.485f, -0.485f, -0.485f, 0.485f,
 
       // Left face
-      -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, -0.45f, -0.45f, -0.45f, -0.45f,
-      -0.45f, -0.45f, -0.45f, -0.45f, -0.45f, 0.45f, -0.45f, 0.45f, 0.45f,
+      -0.485f, 0.485f, 0.485f, -0.485f, 0.485f, -0.485f, -0.485f, -0.485f,
+      -0.485f, -0.485f, -0.485f, -0.485f, -0.485f, -0.485f, 0.485f, -0.485f,
+      0.485f, 0.485f,
 
       // Right face
-      0.45f, 0.45f, 0.45f, 0.45f, 0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f,
-      -0.45f, -0.45f, 0.45f, -0.45f, 0.45f, 0.45f, 0.45f, 0.45f,
+      0.485f, 0.485f, 0.485f, 0.485f, 0.485f, -0.485f, 0.485f, -0.485f, -0.485f,
+      0.485f, -0.485f, -0.485f, 0.485f, -0.485f, 0.485f, 0.485f, 0.485f, 0.485f,
 
       // Bottom face
-      -0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f, -0.45f, 0.45f,
-      0.45f, -0.45f, 0.45f, -0.45f, -0.45f, 0.45f, -0.45f, -0.45f, -0.45f,
+      -0.485f, -0.485f, -0.485f, 0.485f, -0.485f, -0.485f, 0.485f, -0.485f,
+      0.485f, 0.485f, -0.485f, 0.485f, -0.485f, -0.485f, 0.485f, -0.485f,
+      -0.485f, -0.485f,
 
       // Top face
-      -0.45f, 0.45f, -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, 0.45f, 0.45f, 0.45f,
-      0.45f, 0.45f, -0.45f, 0.45f, 0.45f, -0.45f, 0.45f, -0.45f};
+      -0.485f, 0.485f, -0.485f, 0.485f, 0.485f, -0.485f, 0.485f, 0.485f, 0.485f,
+      0.485f, 0.485f, 0.485f, -0.485f, 0.485f, 0.485f, -0.485f, 0.485f,
+      -0.485f};
   glGenVertexArrays(1, &cubeVAO);
   glBindVertexArray(cubeVAO);
 
@@ -257,91 +265,95 @@ void Renderer::amplitudeToColour(float v, float& r, float& g, float& b) {
 }
 
 void Renderer::draw(const Grid& grid) {
-  // clear screen
-  glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+  glClearColor(0.02f, 0.05f, 0.15f, 1.0f);
+
+  // soft twilight blue-grey
+  // glClearColor(0.08f, 0.10f, 0.18f, 1.0f);
+
+  // warm sunset
+  // glClearColor(0.15f, 0.08f, 0.05f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  // build instance list — one entry per visible cell
+  glUseProgram(shaderProgram);  // first
+
+  // build instances
   std::vector<CellInstance> instances;
   instances.reserve(grid.width * grid.height * grid.length / 4);
 
   for (int z = 0; z < grid.length; z++)
-    for (int y = 0; y < grid.height; y++)
+    for (int y = 3; y < grid.height - 3; y++)
       for (int x = 0; x < grid.width; x++) {
         int i = grid.index(x, y, z);
 
-        // solid cells: render as grey obstacle
-        // solid cells: render as grey obstacle
         if (grid.solid[i]) {
-          // Explicitly add 1.0f for solid walls so they aren't transparent
           instances.push_back(
               {(float)x, (float)y, (float)z, 0.4f, 0.4f, 0.4f, 1.0f});
           continue;
         }
 
         float val = grid.current[i];
+        bool isTopLayer = (y == grid.height - 1);
 
-        // skip near-zero cells — they're invisible and waste draw calls
-        if (std::abs(val) < threshold) continue;
+        // edge fade
+        float edgeX = std::min(x, grid.width - 1 - x) / 3.0f;
+        float edgeZ = std::min(z, grid.length - 1 - z) / 3.0f;
+        float edgeFade = std::min(std::min(edgeX, edgeZ), 1.0f);
 
-        // Take absolute value and boost it so waves glow up brightly
-        float intensity = std::abs(val) * 3.5f;
-        if (intensity > 1.0f) intensity = 1.0f;  // Keep it within bounds
+        if (isTopLayer) {
+          // always render surface — base water colour, brighten with waves
+          float intensity = std::min(std::abs(val) * 3.5f, 1.0f);
+          float g = 0.15f + intensity * 0.70f;
+          float b = 0.45f + intensity * 0.50f;
+          float a = 0.75f * edgeFade;
+          instances.push_back({(float)x, (float)y, (float)z, 0.0f, g, b, a});
 
-        float r = 0.0f;
-        float g =
-            0.05f + (intensity * 0.85f);  // Deep teal to glowing green-blue
-        float b =
-            0.30f + (intensity * 0.70f);  // Dark marine to bright neon cyan
-        float a = 0.10f;                  // 40% solid transparency!
+        } else {
+          // sub-surface — only render if the cell above is active
+          if (y >= grid.height - 30 + 10) continue;
+          float valAbove = grid.current[grid.index(x, y + 1, z)];
+          if (std::abs(valAbove) >= threshold) continue;
 
-        instances.push_back({(float)x, (float)y, (float)z, r, g, b, a});
+          float intensity = std::min(std::abs(val) * 3.5f, 1.0f);
+          float g = 0.05f + intensity * 0.60f;
+          float b = 0.30f + intensity * 0.55f;
+          float a = (0.3f + intensity * 0.4f) * edgeFade;
+          instances.push_back({(float)x, (float)y, (float)z, 0.0f, g, b, a});
+        }
       }
 
   if (instances.empty()) return;
-  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-  glBufferData(GL_ARRAY_BUFFER, instances.size() * sizeof(CellInstance),
-               instances.data(), GL_DYNAMIC_DRAW);
-  // Binds the shapes.
-  glBindVertexArray(cubeVAO);
 
-  // set up instance attribute pointers on the VAO
-  // TODO:
+  // upload instance data
+  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+  glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(CellInstance),
+                  instances.data());
+
+  // bind VAO and set instance attribute pointers
   glBindVertexArray(cubeVAO);
-  // location 1 = iPos (x,y,z), offset 0 in CellInstance
-  // TODO:
+  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
                         (void*)0);
-  // TODO:
   glEnableVertexAttribArray(1);
-  // TODO:
   glVertexAttribDivisor(1, 1);
-  // TODO:
-  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
+  glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CellInstance),
                         (void*)12);
   glEnableVertexAttribArray(2);
   glVertexAttribDivisor(2, 1);
 
-  // set shader uniforms
-  glUseProgram(shaderProgram);
-
-  glm::mat4 proj =
-      glm::perspective(glm::radians(60.0f),
-                       (float)grid.height / ((float)grid.length), 0.1f, 500.0f);
+  // uniforms
+  glm::mat4 proj = glm::perspective(
+      glm::radians(60.0f), (float)800.0f / (float)800.0f, 0.1f, 500.0f);
   glm::mat4 view = glm::lookAt(
       glm::vec3(grid.width / 2, grid.height * 1.5f, grid.length * 2),
       glm::vec3(grid.width / 2, grid.height / 2, grid.length / 2),
       glm::vec3(0, 1, 0));
   glm::mat4 mvp = proj * view;
-  GLint mvpLoc = glGetUniformLocation(shaderProgram, "uMVP");
-  glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
-  //
+  glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "uMVP"), 1, GL_FALSE,
+                     glm::value_ptr(mvp));
+  glUniform3f(glGetUniformLocation(shaderProgram, "uLightDir"), 1.0f, 2.0f,
+              1.0f);
 
-  GLint lightLoc = glGetUniformLocation(shaderProgram, "uLightDir");
-  glUniform3f(lightLoc, 1.0f, 2.0f, 1.0f);  // light from upper right
-
-  // draw all instances in one call
   glDrawArraysInstanced(GL_TRIANGLES, 0, 36, instances.size());
+  glBindVertexArray(0);
 }
-
 void Renderer::present() { SDL_GL_SwapWindow(window); }
